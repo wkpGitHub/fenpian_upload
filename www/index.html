@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="axios.js"></script>
+  <script src="./spark-md5.js"></script>
+</head>
+
+<body>
+  <input id="J_file" type="file" />
+  <div>
+    <button id="J_sub" type="button">提交</button>
+  </div>
+
+  <script>
+    window.onload = () => {
+      J_sub.onclick = async () => {
+        var file = J_file.files[0]
+        if (!file) {
+          console.log('请上传文件')
+          return false
+        }
+        // 这里是为了生成md5,文件唯一标识码
+        const spark5 = new SparkMD5()
+        spark5.append(file)
+        const md5 = spark5.end()
+        
+        // 判断文件是否上传过
+        const res = await axios.post('/file/exists', { md5 })
+        const { isExit, lastIndex } = res.data.data
+
+        // 每个分片大小10M
+        const chunkSize = 10 * 1024 * 1024
+        const fileSize = file.size
+        // 总共有几个分片
+        const total = Math.ceil(fileSize / chunkSize)
+        // 分片从第几个开始上传
+        let index = 0
+        if (lastIndex >= total) {
+          console.log('已经上传完成')
+          return false
+        }
+        // 这里是上一次上传了一些，这次继续上传
+        if (lastIndex) {
+          console.log(`继续从第${lastIndex}片上传`)
+          index = lastIndex
+        }
+
+        function send () {
+          var form = new FormData()
+          var start = index * chunkSize
+          var end = Math.min(fileSize, (index + 1) * chunkSize)
+          var smallFile = file.slice(start, end)
+          form.append('file', smallFile)
+          form.append('name', file.name)
+          form.append('total', total)
+          form.append('md5', md5)
+          form.append('index', index + 1)
+          axios.post('./upload', form, {
+            onUploadProgress: e => {
+              // 处理上传的进度
+              console.log(e);
+            }
+          }).then(() => {
+            // 这里为了浏览器打开控制台，卡住上传，一个个上传，可以刷新浏览器，断开上传，重新上传（测试已经上传的分片不会上传）
+            debugger
+            index = index + 1
+            if (index < total) send()
+          })
+        }
+        send()
+      }
+    }
+  </script>
+</body>
+
+</html>
